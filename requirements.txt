@@ -1,0 +1,10 @@
+numpy
+sympy
+PyYAML
+datasets
+wandb
+latex2sympy2
+trl
+unsloth
+tqdm
+
