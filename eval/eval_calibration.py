@@ -9,7 +9,7 @@ import numpy as np
 import torch
 from datasets import load_dataset
 
-from rewards.ternary_reward import build_prompt
+from utils.prompts import build_prompt
 from verifier.math_verifier import verify_with_timeout
 
 

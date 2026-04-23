@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from pathlib import Path
+import re
+import warnings
 from typing import Any, Callable, Iterable
 
 from verifier.math_verifier import extract_boxed, verify_with_timeout
@@ -26,6 +28,10 @@ def _extract_math_answer(item: dict[str, Any]) -> str:
     boxed = extract_boxed(solution)
     if boxed is not None:
         return boxed
+
+    shorthand_boxed = re.search(r"\\boxed\s+([^\s$.,;]+)", solution)
+    if shorthand_boxed:
+        return shorthand_boxed.group(1).strip()
 
     raise ValueError("Could not extract MATH answer from item")
 
@@ -61,11 +67,34 @@ def load_and_normalize_datasets() -> list[dict[str, Any]]:
     """Load training data from Hugging Face and convert to the common schema."""
     from datasets import load_dataset
 
-    math_train = load_dataset("lighteval/MATH", split="train")
+    math_train = None
+    last_error: Exception | None = None
+    for dataset_name in ("lighteval/MATH", "DigitalLearningGmbH/MATH-lighteval"):
+        try:
+            math_train = load_dataset(dataset_name, split="train")
+            break
+        except Exception as exc:
+            last_error = exc
+    if math_train is None:
+        raise RuntimeError("Failed to load any MATH training dataset.") from last_error
+
     gsm8k_train = load_dataset("gsm8k", "main", split="train")
 
-    normalized_math = [_normalize_math_item(item) for item in math_train]
+    normalized_math = []
+    skipped_math = 0
+    for item in math_train:
+        try:
+            normalized_math.append(_normalize_math_item(item))
+        except ValueError as exc:
+            skipped_math += 1
+            warnings.warn(f"Skipping MATH item during normalization: {exc}", stacklevel=2)
+
     normalized_gsm8k = [_normalize_gsm8k_item(item) for item in gsm8k_train]
+    if skipped_math:
+        warnings.warn(
+            f"Skipped {skipped_math} MATH training items during normalization.",
+            stacklevel=2,
+        )
     return normalized_math + normalized_gsm8k
 
 

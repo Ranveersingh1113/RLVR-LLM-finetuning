@@ -3,31 +3,9 @@
 from __future__ import annotations
 
 import functools
-import random
 
 from verifier.math_verifier import extract_boxed, is_abstention, verify_with_timeout
-
-
-def build_prompt(problem: str, allow_abstention: bool = False) -> str:
-    if allow_abstention:
-        instruction = (
-            "Solve the following math problem step by step. "
-            "If you are genuinely uncertain, you may respond with "
-            "'I don't know' instead of guessing. "
-            "Put your final answer in \\boxed{}.\n\n"
-        )
-    else:
-        instruction = (
-            "Solve the following math problem step by step. "
-            "Put your final answer in \\boxed{}.\n\n"
-        )
-    return instruction + f"Problem: {problem}\n\nSolution:"
-
-
-def sample_prompt(problem: str, phase: int) -> str:
-    if phase == 3 and random.random() < 0.30:
-        return build_prompt(problem, allow_abstention=True)
-    return build_prompt(problem, allow_abstention=False)
+from utils.prompts import build_prompt, sample_prompt
 
 
 def _ternary_reward_core(
@@ -72,4 +50,3 @@ def make_ternary_reward_fn(phase3_start_step: int, warmup_steps: int = 50):
         phase3_start_step=phase3_start_step,
         warmup_steps=warmup_steps,
     )
-
