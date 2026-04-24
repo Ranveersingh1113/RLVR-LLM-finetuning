@@ -55,46 +55,6 @@ def ensure_accelerate_batch_compat() -> None:
     data_loader.find_batch_size = patched_find_batch_size
 
 
-def ensure_unsloth_grpo_bool_sort_compat() -> None:
-    """Patch Unsloth GRPO padding packing for Torch versions that cannot sort bool tensors on CUDA."""
-    import importlib
-    import torch
-
-    module = importlib.import_module("unsloth_compiled_cache.UnslothGRPOTrainer")
-    original_left_pack_padding = module.left_pack_padding
-    if getattr(original_left_pack_padding, "_rlvr_patched", False):
-        return
-
-    def patched_left_pack_padding(tensor: torch.Tensor, pad_id: int) -> torch.Tensor:
-        mask = (tensor != pad_id)
-        if mask.dtype == torch.bool:
-            mask = mask.to(dtype=torch.int32)
-        sorted_indices = torch.argsort(mask, dim=1, descending=True, stable=True)
-        return torch.gather(tensor, 1, sorted_indices)
-
-    patched_left_pack_padding._rlvr_patched = True  # type: ignore[attr-defined]
-    module.left_pack_padding = patched_left_pack_padding
-
-
-def ensure_unsloth_compiled_grpo_cache_patched() -> None:
-    """Patch the generated Unsloth GRPO cache file for Torch 2.4 bool-sort compatibility."""
-    cache_path = Path(__file__).resolve().parents[1] / "unsloth_compiled_cache" / "UnslothGRPOTrainer.py"
-    if cache_path.exists():
-        original = "    mask = (tensor != pad_id)\n    # Must do stable=True since binary mark is unordered\n"
-        patched = (
-            "    mask = (tensor != pad_id)\n"
-            "    if mask.dtype == torch.bool:\n"
-            "        mask = mask.to(dtype=torch.int32)\n"
-            "    # Must do stable=True since binary mark is unordered\n"
-        )
-        text = cache_path.read_text(encoding="utf-8")
-        if original in text and patched not in text:
-            cache_path.write_text(text.replace(original, patched), encoding="utf-8")
-
-    if "unsloth_compiled_cache.UnslothGRPOTrainer" in sys.modules:
-        ensure_unsloth_grpo_bool_sort_compat()
-
-
 def ensure_torch_argsort_bool_cuda_compat() -> None:
     """Patch torch.argsort so CUDA bool tensors are cast before sorting."""
     import torch

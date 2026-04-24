@@ -19,7 +19,6 @@ from training.common import (
     resolve_training_precision,
 )
 from training.runtime_compat import ensure_torch_inductor_config_compat
-from training.runtime_compat import ensure_unsloth_compiled_grpo_cache_patched
 
 
 def parse_args() -> argparse.Namespace:
@@ -37,7 +36,6 @@ def main() -> None:
     sampler = build_sampler(cache_path=args.cache_path)
     train_dataset = AdaptiveCurriculumDataset(sampler, phase=3)
     model, tokenizer = load_model_and_tokenizer(config)
-    ensure_unsloth_compiled_grpo_cache_patched()
     reward_fn = make_phase3_reward(
         tokenizer=tokenizer,
         phase3_start_step=args.phase3_start_step,

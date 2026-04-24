@@ -148,18 +148,26 @@ def _extract_levels(kwargs: dict[str, Any]) -> list[int]:
     return [int(level) for level in levels]
 
 
+def _extract_answers(kwargs: dict[str, Any], answers: list[str] | None) -> list[str]:
+    if answers is not None:
+        return answers
+    extracted = kwargs.get("answers") or kwargs.get("answer") or []
+    return list(extracted)
+
+
 def make_phase2_reward(tokenizer, sampler: AdaptiveDifficultySampler | None = None):
-    def reward_fn(completions: list[str], answers: list[str], **kwargs) -> list[float]:
+    def reward_fn(completions: list[str], answers: list[str] | None = None, **kwargs) -> list[float]:
+        normalized_answers = _extract_answers(kwargs, answers)
         current_step = _extract_step(kwargs)
         rewards = binary_reward(
             completions=completions,
-            answers=answers,
+            answers=normalized_answers,
             tokenizer=tokenizer,
             current_step=current_step,
         )
         if sampler is not None:
             levels = _extract_levels(kwargs)
-            for completion, answer, level in zip(completions, answers, levels):
+            for completion, answer, level in zip(completions, normalized_answers, levels):
                 correct = verify_with_timeout(completion, answer) == 1.0
                 sampler.update(level, correct)
         return rewards
@@ -178,17 +186,18 @@ def make_phase3_reward(
         warmup_steps=warmup_steps,
     )
 
-    def reward_fn(completions: list[str], answers: list[str], **kwargs) -> list[float]:
+    def reward_fn(completions: list[str], answers: list[str] | None = None, **kwargs) -> list[float]:
+        normalized_answers = _extract_answers(kwargs, answers)
         current_step = _extract_step(kwargs)
         rewards = reward_core(
             completions=completions,
-            answers=answers,
+            answers=normalized_answers,
             tokenizer=tokenizer,
             current_step=current_step,
         )
         if sampler is not None:
             levels = _extract_levels(kwargs)
-            for completion, answer, level in zip(completions, answers, levels):
+            for completion, answer, level in zip(completions, normalized_answers, levels):
                 correct = verify_with_timeout(completion, answer) == 1.0
                 sampler.update(level, correct)
         return rewards
