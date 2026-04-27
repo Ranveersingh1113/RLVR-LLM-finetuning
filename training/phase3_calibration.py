@@ -9,6 +9,11 @@ from pathlib import Path
 if __package__ is None or __package__ == "":
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from monitoring.wandb_callbacks import (
+    CurriculumMetricsCallback,
+    PeriodicEvalCallback,
+    configure_wandb_project,
+)
 from training.common import (
     AdaptiveCurriculumDataset,
     build_sampler,
@@ -33,9 +38,10 @@ def parse_args() -> argparse.Namespace:
 def main() -> None:
     args = parse_args()
     config = load_config(args.config)
-    sampler = build_sampler(cache_path=args.cache_path)
-    train_dataset = AdaptiveCurriculumDataset(sampler, phase=3)
+    configure_wandb_project(config.get("monitoring", {}).get("project"))
     model, tokenizer = load_model_and_tokenizer(config)
+    sampler = build_sampler(cache_path=args.cache_path)
+    train_dataset = AdaptiveCurriculumDataset(sampler, phase=3, tokenizer=tokenizer)
     reward_fn = make_phase3_reward(
         tokenizer=tokenizer,
         phase3_start_step=args.phase3_start_step,
@@ -45,19 +51,9 @@ def main() -> None:
 
     ensure_torch_inductor_config_compat()
     from trl import GRPOConfig, GRPOTrainer
-    from transformers import TrainerCallback
 
     batch_settings = resolve_grpo_batch_settings(config)
     precision = resolve_training_precision()
-
-    class CurriculumMetricsCallback(TrainerCallback):
-        def __init__(self, sampler) -> None:
-            self.sampler = sampler
-
-        def on_log(self, args, state, control, logs=None, **kwargs):
-            if logs is not None:
-                logs.update(self.sampler.get_stats())
-            return control
 
     training_args = GRPOConfig(
         output_dir=config["output_dir"],
@@ -90,7 +86,16 @@ def main() -> None:
         args=training_args,
         train_dataset=train_dataset,
         processing_class=tokenizer,
-        callbacks=[CurriculumMetricsCallback(sampler)],
+        callbacks=[
+            CurriculumMetricsCallback(sampler),
+            PeriodicEvalCallback(
+                tokenizer,
+                fast_eval_every_steps=config.get("monitoring", {}).get("fast_eval_every_steps"),
+                calibration_eval_every_steps=config.get("monitoring", {}).get(
+                    "calibration_eval_every_steps"
+                ),
+            ),
+        ],
     )
     trainer.train()
     trainer.save_model(f"{config['output_dir']}/phase3_final")

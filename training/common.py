@@ -102,19 +102,25 @@ class AdaptiveCurriculumDataset(IterableDataset):
         sampler: AdaptiveDifficultySampler,
         *,
         phase: int,
+        tokenizer=None,
         prompt_builder: Callable[[str, int], str] | None = None,
     ) -> None:
         super().__init__()
         self.sampler = sampler
         self.phase = phase
-        self.prompt_builder = prompt_builder or sample_prompt
+        self.tokenizer = tokenizer
+        self._custom_prompt_builder = prompt_builder
 
     def __iter__(self):
         while True:
             item = self.sampler.sample_batch(batch_size=1)[0]
             level = int(item.get("_sampled_level", item["level"]))
+            if self._custom_prompt_builder is not None:
+                prompt = self._custom_prompt_builder(item["problem"], self.phase)
+            else:
+                prompt = sample_prompt(item["problem"], self.phase, self.tokenizer)
             yield {
-                "prompt": self.prompt_builder(item["problem"], self.phase),
+                "prompt": prompt,
                 "answer": item["answer"],
                 "problem": item["problem"],
                 "level": int(item["level"]),

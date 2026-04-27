@@ -2,6 +2,12 @@
 
 from __future__ import annotations
 
+import sys
+from pathlib import Path
+
+if __package__ is None or __package__ == "":
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
 from typing import Any
 
 import numpy as np
@@ -50,7 +56,7 @@ def eval_pass1(model, tokenizer) -> dict[str, Any]:
     model.eval()
     for item in dataset:
         level = int(str(item["level"]).split()[-1])
-        prompt = build_prompt(item["problem"], allow_abstention=False)
+        prompt = build_prompt(item["problem"], allow_abstention=False, tokenizer=tokenizer)
         completion = generate_one(model, tokenizer, prompt, temperature=0.0)
         correct = verify_with_timeout(completion, item["answer"]) == 1.0
         abstained = is_abstention(completion)
@@ -71,3 +77,45 @@ def eval_pass1(model, tokenizer) -> dict[str, Any]:
             for level, values in results["abstention_by_level"].items()
         },
     }
+
+
+if __name__ == "__main__":
+    import argparse
+    import json
+
+    from training.runtime_compat import (
+        ensure_accelerate_batch_compat,
+        ensure_torch_argsort_bool_cuda_compat,
+        ensure_torch_inductor_config_compat,
+    )
+
+    ensure_torch_inductor_config_compat()
+    ensure_accelerate_batch_compat()
+    ensure_torch_argsort_bool_cuda_compat()
+
+    from transformers import AutoTokenizer
+    from unsloth import FastLanguageModel
+
+    parser = argparse.ArgumentParser(description="Standalone Pass@1 eval on MATH-500")
+    parser.add_argument("--checkpoint", default="./checkpoints/phase2_best")
+    parser.add_argument("--base-model", default="unsloth/qwen2.5-math-7b-instruct-bnb-4bit")
+    parser.add_argument("--max-seq-length", type=int, default=2048)
+    parser.add_argument(
+        "--no-adapter",
+        action="store_true",
+        help="Evaluate the base model only (zero-shot baseline, no LoRA adapter loaded)",
+    )
+    cli_args = parser.parse_args()
+
+    model, tokenizer = FastLanguageModel.from_pretrained(
+        model_name=cli_args.base_model,
+        max_seq_length=cli_args.max_seq_length,
+        load_in_4bit=True,
+    )
+    if not cli_args.no_adapter:
+        from peft import PeftModel
+        model = PeftModel.from_pretrained(model, cli_args.checkpoint)
+    FastLanguageModel.for_inference(model)
+
+    metrics = eval_pass1(model, tokenizer)
+    print(json.dumps(metrics, indent=2))

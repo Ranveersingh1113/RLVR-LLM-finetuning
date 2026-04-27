@@ -22,7 +22,7 @@ def generate_n(
     temperature: float = 0.7,
     max_new_tokens: int = 512,
 ) -> list[str]:
-    prompt = build_prompt(problem, allow_abstention=False)
+    prompt = build_prompt(problem, allow_abstention=False, tokenizer=tokenizer)
     encoded = tokenizer(prompt, return_tensors="pt")
     encoded = {key: value.to(model.device) for key, value in encoded.items()}
     encoded = {

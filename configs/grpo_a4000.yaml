@@ -43,5 +43,5 @@ monitoring:
   fast_eval_every_steps: 200
   calibration_eval_every_steps: 1000
 
-output_dir: "./checkpoints"
+output_dir: "./checkpoints_v2"
 
