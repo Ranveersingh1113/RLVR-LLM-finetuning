@@ -31,14 +31,19 @@ class AdaptiveDifficultySampler:
 
     def _weight(self, level: int) -> float:
         probability = float(np.mean(self.acc[level]))
-        return max(0.05, 1.0 - abs(probability - 0.5) * 2.0)
+        # v3: floor raised 0.05 -> 0.15 to keep hard levels in active rotation
+        # even when their rolling accuracy is low.
+        return max(0.15, 1.0 - abs(probability - 0.5) * 2.0)
 
     def sample_batch(self, batch_size: int) -> list[dict[str, Any]]:
         if batch_size <= 0:
             raise ValueError("batch_size must be positive")
 
+        # v3: dropped the `× len(self.data[level])` size multiplier. With it,
+        # L1 (8037 problems thanks to GSM8K) dominated regardless of curriculum
+        # weight, and L5 share collapsed to ~6% of training rollouts at end of v2.
         raw_weights = np.array(
-            [self._weight(level) * len(self.data[level]) for level in self.levels],
+            [self._weight(level) for level in self.levels],
             dtype=float,
         )
         probabilities = raw_weights / raw_weights.sum()

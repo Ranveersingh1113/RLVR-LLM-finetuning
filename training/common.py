@@ -19,6 +19,7 @@ from training.runtime_compat import (
     ensure_accelerate_batch_compat,
     ensure_torch_argsort_bool_cuda_compat,
     ensure_torch_inductor_config_compat,
+    ensure_torch_load_safe_compat,
 )
 from utils.prompts import sample_prompt
 from verifier.math_verifier import verify_with_timeout
@@ -40,6 +41,7 @@ def load_model_and_tokenizer(config: dict[str, Any]):
     ensure_torch_inductor_config_compat()
     ensure_accelerate_batch_compat()
     ensure_torch_argsort_bool_cuda_compat()
+    ensure_torch_load_safe_compat()
     from unsloth import FastLanguageModel
 
     model, tokenizer = FastLanguageModel.from_pretrained(

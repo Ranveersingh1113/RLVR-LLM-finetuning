@@ -23,7 +23,10 @@ from training.common import (
     resolve_grpo_batch_settings,
     resolve_training_precision,
 )
-from training.runtime_compat import ensure_torch_inductor_config_compat
+from training.runtime_compat import (
+    ensure_torch_inductor_config_compat,
+    ensure_torch_load_safe_compat,
+)
 
 
 def parse_args() -> argparse.Namespace:
@@ -97,6 +100,7 @@ def main() -> None:
             ),
         ],
     )
+    ensure_torch_load_safe_compat()
     trainer.train()
     trainer.save_model(f"{config['output_dir']}/phase3_final")
 

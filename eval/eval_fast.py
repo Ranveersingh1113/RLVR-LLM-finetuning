@@ -44,7 +44,7 @@ def generate_one(
     return tokenizer.decode(completion_ids, skip_special_tokens=True)
 
 
-def eval_pass1(model, tokenizer) -> dict[str, Any]:
+def eval_pass1(model, tokenizer, max_new_tokens: int = 1024) -> dict[str, Any]:
     """Greedy Pass@1 evaluation on MATH-500."""
     dataset = load_dataset("HuggingFaceH4/MATH-500", split="test")
     results = {
@@ -57,7 +57,7 @@ def eval_pass1(model, tokenizer) -> dict[str, Any]:
     for item in dataset:
         level = int(str(item["level"]).split()[-1])
         prompt = build_prompt(item["problem"], allow_abstention=False, tokenizer=tokenizer)
-        completion = generate_one(model, tokenizer, prompt, temperature=0.0)
+        completion = generate_one(model, tokenizer, prompt, temperature=0.0, max_new_tokens=max_new_tokens)
         correct = verify_with_timeout(completion, item["answer"]) == 1.0
         abstained = is_abstention(completion)
 

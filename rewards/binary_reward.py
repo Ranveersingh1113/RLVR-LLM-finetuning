@@ -1,4 +1,11 @@
-"""Phase 2 binary reward with delayed length penalty."""
+"""Phase 2 binary reward.
+
+Length penalty was removed in v3 after diagnostic analysis showed it was actively
+counterproductive: a truncated hard-problem rollout (512 tokens, no boxed answer)
+received -0.25, while a fast wrong guess (100 tokens with boxed) received +0.10.
+This taught the model to guess quickly on hard problems rather than reason longer,
+and was the single largest contributor to flat L4/L5 performance.
+"""
 
 from __future__ import annotations
 
@@ -15,14 +22,8 @@ def binary_reward(
     rewards: list[float] = []
     for completion, answer in zip(completions, answers):
         score = verify_with_timeout(completion, answer)
-
         if extract_boxed(completion) is not None:
             score += 0.1
-
-        if current_step >= 300:
-            n_tokens = len(tokenizer.encode(completion))
-            score -= 0.0008 * max(0, n_tokens - 200)
-
         rewards.append(score)
     return rewards
 

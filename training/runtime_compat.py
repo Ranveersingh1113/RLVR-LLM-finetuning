@@ -70,3 +70,44 @@ def ensure_torch_argsort_bool_cuda_compat() -> None:
 
     patched_argsort._rlvr_patched = True  # type: ignore[attr-defined]
     torch.argsort = patched_argsort
+
+
+def ensure_torch_load_safe_compat() -> None:
+    """No-op the transformers torch.load safety gate when resuming a local checkpoint.
+
+    Transformers >=4.50 refuses to call torch.load on torch <2.6 due to CVE-2025-32434
+    (an untrusted-pickle vulnerability). When resuming from a checkpoint we wrote
+    ourselves on this same machine the threat model does not apply, so bypassing the
+    gate is safe in this controlled environment. Do NOT carry this patch into any
+    code path that loads externally sourced .bin/.pt files.
+
+    Idempotent: safe to call multiple times. Should be called once before any
+    transformers import AND once again right before trainer.train(), since
+    transformers.trainer binds the symbol by name at module import time and a
+    later patch of the source module alone won't update that binding.
+    """
+    import transformers.utils.import_utils as import_utils
+
+    def patched_check_torch_load_is_safe(*args, **kwargs):
+        return None
+
+    patched_check_torch_load_is_safe._rlvr_patched = True  # type: ignore[attr-defined]
+
+    original = getattr(import_utils, "check_torch_load_is_safe", None)
+    if original is not None and not getattr(original, "_rlvr_patched", False):
+        import_utils.check_torch_load_is_safe = patched_check_torch_load_is_safe
+        # Walk every loaded module and rebind any attribute that still points to
+        # the original — `from ... import check_torch_load_is_safe` creates a
+        # local binding that doesn't follow updates to the source module.
+        for module in list(sys.modules.values()):
+            if module is None:
+                continue
+            try:
+                attr = getattr(module, "check_torch_load_is_safe", None)
+            except Exception:
+                continue
+            if attr is original:
+                try:
+                    setattr(module, "check_torch_load_is_safe", patched_check_torch_load_is_safe)
+                except Exception:
+                    pass

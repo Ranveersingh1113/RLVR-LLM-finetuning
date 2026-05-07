@@ -25,7 +25,8 @@ class AdaptiveDifficultySamplerTests(unittest.TestCase):
     def test_weight_has_floor(self) -> None:
         for _ in range(10):
             self.sampler.update(5, correct=False)
-        self.assertEqual(self.sampler._weight(5), 0.05)
+        # v3: floor raised 0.05 -> 0.15 to keep hard levels in active rotation.
+        self.assertEqual(self.sampler._weight(5), 0.15)
 
     def test_sample_batch_tags_level(self) -> None:
         batch = self.sampler.sample_batch(8)
