@@ -68,6 +68,36 @@ def load_model_and_tokenizer(config: dict[str, Any]):
     return model, tokenizer
 
 
+def load_model_with_adapter(config: dict[str, Any], adapter_checkpoint: str):
+    """Load base model and an existing LoRA adapter for continued training.
+
+    Used to start Phase 3 from a Phase 2 checkpoint. Unsloth auto-detects the
+    PEFT checkpoint and loads base + adapter in one call; do NOT call
+    get_peft_model() again or a second adapter will be stacked on top.
+    """
+    ensure_torch_inductor_config_compat()
+    ensure_accelerate_batch_compat()
+    ensure_torch_argsort_bool_cuda_compat()
+    ensure_torch_load_safe_compat()
+    from unsloth import FastLanguageModel
+
+    model, tokenizer = FastLanguageModel.from_pretrained(
+        model_name=adapter_checkpoint,
+        max_seq_length=config["model"]["max_seq_length"],
+        load_in_4bit=config["model"]["load_in_4bit"],
+        use_gradient_checkpointing="unsloth"
+        if config["model"].get("gradient_checkpointing", True)
+        else False,
+        max_lora_rank=config["lora"]["r"],
+    )
+    # Adapter is already applied; explicitly enable gradients on LoRA weights
+    # to be safe across Unsloth versions.
+    for name, param in model.named_parameters():
+        if "lora_" in name.lower():
+            param.requires_grad = True
+    return model, tokenizer
+
+
 def resolve_training_precision() -> dict[str, bool]:
     bf16_supported = torch.cuda.is_available() and torch.cuda.is_bf16_supported()
     return {

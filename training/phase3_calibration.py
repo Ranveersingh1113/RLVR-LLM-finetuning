@@ -19,6 +19,7 @@ from training.common import (
     build_sampler,
     load_config,
     load_model_and_tokenizer,
+    load_model_with_adapter,
     make_phase3_reward,
     resolve_grpo_batch_settings,
     resolve_training_precision,
@@ -33,8 +34,28 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", default="configs/grpo_a4000.yaml")
     parser.add_argument("--cache-path", default="./data/train_filtered.hf")
-    parser.add_argument("--phase3-start-step", type=int, required=True)
+    parser.add_argument(
+        "--phase2-checkpoint",
+        default="./checkpoints_v3/phase2_best",
+        help="Path to Phase 2 LoRA adapter to continue training from. "
+        "Set to 'none' to start Phase 3 from the base model (not recommended).",
+    )
+    parser.add_argument(
+        "--phase3-start-step",
+        type=int,
+        default=0,
+        help="Global step at which Phase 3 begins (controls ternary reward warmup). "
+        "Phase 3 is its own training run starting at global_step=0, so default is 0.",
+    )
     parser.add_argument("--max-steps", type=int, default=400)
+    parser.add_argument(
+        "--resume-from-checkpoint",
+        nargs="?",
+        const=True,
+        default=False,
+        help="Resume Phase 3 itself from a checkpoint in output_dir.",
+    )
+    parser.add_argument("--run-name", default="phase3_calibration_adaptive")
     return parser.parse_args()
 
 
@@ -42,7 +63,12 @@ def main() -> None:
     args = parse_args()
     config = load_config(args.config)
     configure_wandb_project(config.get("monitoring", {}).get("project"))
-    model, tokenizer = load_model_and_tokenizer(config)
+    if args.phase2_checkpoint and args.phase2_checkpoint.lower() != "none":
+        print(f"[phase3] Loading base model + Phase 2 adapter from {args.phase2_checkpoint}")
+        model, tokenizer = load_model_with_adapter(config, args.phase2_checkpoint)
+    else:
+        print("[phase3] Starting from base model (no Phase 2 checkpoint)")
+        model, tokenizer = load_model_and_tokenizer(config)
     sampler = build_sampler(cache_path=args.cache_path)
     train_dataset = AdaptiveCurriculumDataset(sampler, phase=3, tokenizer=tokenizer)
     reward_fn = make_phase3_reward(
@@ -74,7 +100,7 @@ def main() -> None:
         save_steps=config["grpo"]["save_steps"],
         max_steps=args.max_steps,
         report_to=config["monitoring"]["report_to"],
-        run_name="phase3_calibration_adaptive",
+        run_name=args.run_name,
         bf16=precision["bf16"],
         fp16=precision["fp16"],
         gradient_checkpointing=config["model"]["gradient_checkpointing"],
@@ -101,7 +127,7 @@ def main() -> None:
         ],
     )
     ensure_torch_load_safe_compat()
-    trainer.train()
+    trainer.train(resume_from_checkpoint=args.resume_from_checkpoint)
     trainer.save_model(f"{config['output_dir']}/phase3_final")
 
 

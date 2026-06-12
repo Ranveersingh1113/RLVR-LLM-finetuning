@@ -2,8 +2,13 @@
 
 from __future__ import annotations
 
+import sys
 from collections import defaultdict
+from pathlib import Path
 from typing import Any
+
+if __package__ is None or __package__ == "":
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import numpy as np
 import torch
@@ -20,7 +25,7 @@ def generate_n(
     *,
     n: int,
     temperature: float = 0.7,
-    max_new_tokens: int = 512,
+    max_new_tokens: int = 1024,
 ) -> list[str]:
     prompt = build_prompt(problem, allow_abstention=False, tokenizer=tokenizer)
     encoded = tokenizer(prompt, return_tensors="pt")
@@ -91,3 +96,48 @@ def eval_calibration(model, tokenizer, K: int = 8, n_bins: int = 10) -> dict[str
 
     model.train()
     return ece_by_level
+
+
+if __name__ == "__main__":
+    import argparse
+    import json
+
+    from training.runtime_compat import (
+        ensure_accelerate_batch_compat,
+        ensure_torch_argsort_bool_cuda_compat,
+        ensure_torch_inductor_config_compat,
+        ensure_torch_load_safe_compat,
+    )
+
+    ensure_torch_inductor_config_compat()
+    ensure_accelerate_batch_compat()
+    ensure_torch_argsort_bool_cuda_compat()
+    ensure_torch_load_safe_compat()
+
+    from unsloth import FastLanguageModel
+
+    parser = argparse.ArgumentParser(description="Standalone ECE eval on MATH-500")
+    parser.add_argument("--checkpoint", default="./checkpoints_v3/phase3_final")
+    parser.add_argument("--base-model", default="unsloth/qwen2.5-math-7b-instruct-bnb-4bit")
+    parser.add_argument("--max-seq-length", type=int, default=1536)
+    parser.add_argument("--K", type=int, default=8, help="Samples per problem for ECE bins")
+    parser.add_argument("--n-bins", type=int, default=10)
+    parser.add_argument(
+        "--no-adapter",
+        action="store_true",
+        help="Evaluate the base model only (calibration baseline, no LoRA loaded)",
+    )
+    cli_args = parser.parse_args()
+
+    model, tokenizer = FastLanguageModel.from_pretrained(
+        model_name=cli_args.base_model,
+        max_seq_length=cli_args.max_seq_length,
+        load_in_4bit=True,
+    )
+    if not cli_args.no_adapter:
+        from peft import PeftModel
+        model = PeftModel.from_pretrained(model, cli_args.checkpoint)
+    FastLanguageModel.for_inference(model)
+
+    metrics = eval_calibration(model, tokenizer, K=cli_args.K, n_bins=cli_args.n_bins)
+    print(json.dumps(metrics, indent=2))

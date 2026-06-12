@@ -33,7 +33,9 @@ grpo:
 
 phase3:
   learning_rate: 2.0e-6
-  max_completion_length: 384
+  max_completion_length: 768   # v3: 384 -> 768, matching Phase 2 v3. Tight length
+                               # restrictions caused perverse incentives in v2; same
+                               # logic applies here.
   reward_warmup_steps: 50
   additional_steps: 400
 
